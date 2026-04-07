@@ -25,7 +25,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Drawer,
@@ -46,7 +45,119 @@ import {
   type LeadFilters,
 } from "@/lib/leads";
 import { hasGoogleMapsKey } from "@/lib/mapBackend";
+import { getSearchSuggestions } from "@/lib/searchSuggest";
 import { cn } from "@/lib/utils";
+
+function LeadSearchField({
+  value,
+  disabled,
+  leads,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  leads: Lead[];
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimer.current) clearTimeout(blurTimer.current);
+    };
+  }, []);
+
+  const suggestions = useMemo(
+    () => getSearchSuggestions(value, leads, 10),
+    [value, leads]
+  );
+
+  const showList = open && !disabled && value.trim().length > 0 && suggestions.length > 0;
+
+  const clearBlurTimer = () => {
+    if (blurTimer.current) {
+      clearTimeout(blurTimer.current);
+      blurTimer.current = null;
+    }
+  };
+
+  const pick = (text: string) => {
+    onChange(text);
+    setOpen(false);
+    setHighlight(0);
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none z-10" />
+      <Input
+        role="combobox"
+        aria-expanded={showList}
+        aria-autocomplete="list"
+        aria-controls="lead-search-suggestions"
+        className="pl-9 min-h-11"
+        placeholder="Search name, city, state…"
+        autoComplete="off"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+          setHighlight(0);
+        }}
+        onFocus={() => {
+          clearBlurTimer();
+          setOpen(true);
+        }}
+        onBlur={() => {
+          blurTimer.current = setTimeout(() => setOpen(false), 180);
+        }}
+        onKeyDown={(e) => {
+          if (!showList) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setHighlight((i) => Math.min(i + 1, suggestions.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHighlight((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            pick(suggestions[highlight] ?? suggestions[0]);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+      />
+      {showList && (
+        <ul
+          id="lead-search-suggestions"
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-56 overflow-y-auto overflow-x-hidden rounded-md border border-border bg-popover py-1 shadow-md"
+        >
+          {suggestions.map((s, i) => (
+            <li key={`${s}-${i}`} role="option" aria-selected={i === highlight}>
+              <button
+                type="button"
+                className={cn(
+                  "w-full px-3 py-2.5 text-left text-sm min-h-11 hover:bg-muted/80 transition-colors truncate",
+                  i === highlight && "bg-muted"
+                )}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => pick(s)}
+              >
+                {s}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function StarRow({ label, value }: { label: string; value: number }) {
   const v = Math.max(0, Math.min(5, Math.round(value)));
@@ -458,16 +569,12 @@ function SalesFieldInner() {
             {leadsError}
           </div>
         )}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            className="pl-9 min-h-11"
-            placeholder="Search name, city, state…"
-            value={filters.search}
-            disabled={leadsLoading}
-            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-          />
-        </div>
+        <LeadSearchField
+          value={filters.search}
+          disabled={leadsLoading}
+          leads={leads}
+          onChange={(search) => setFilters((f) => ({ ...f, search }))}
+        />
 
         <div className="space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -491,8 +598,16 @@ function SalesFieldInner() {
                 <ChevronDown className="w-4 h-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
+            <PopoverContent
+              align="start"
+              sideOffset={4}
+              collisionPadding={12}
+              className={cn(
+                "p-0 min-w-0 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md z-[100]",
+                "w-[var(--radix-popover-trigger-width)] max-w-[min(100vw-1.5rem,var(--radix-popover-trigger-width))]"
+              )}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border shrink-0">
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
@@ -508,15 +623,16 @@ function SalesFieldInner() {
                   Select all
                 </button>
               </div>
-              <ScrollArea className="max-h-[240px]">
-                <ul className="p-2 space-y-1">
+              <div className="max-h-[min(240px,45vh)] overflow-y-auto overflow-x-hidden overscroll-contain">
+                <ul className="p-2 space-y-0.5 w-full min-w-0">
                   {stateOptions.map((s) => {
                     const checked = filters.states.includes(s);
                     return (
-                      <li key={s}>
-                        <label className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60 cursor-pointer text-sm">
+                      <li key={s} className="min-w-0">
+                        <label className="flex items-center gap-2 rounded-md px-2 py-2 min-h-11 hover:bg-muted/60 cursor-pointer text-sm min-w-0">
                           <Checkbox
                             checked={checked}
+                            className="shrink-0"
                             onCheckedChange={(v) => {
                               const on = v === true;
                               setFilters((f) => {
@@ -527,13 +643,13 @@ function SalesFieldInner() {
                               });
                             }}
                           />
-                          <span className="truncate">{s}</span>
+                          <span className="truncate min-w-0 flex-1 text-left">{s}</span>
                         </label>
                       </li>
                     );
                   })}
                 </ul>
-              </ScrollArea>
+              </div>
             </PopoverContent>
           </Popover>
         </div>
