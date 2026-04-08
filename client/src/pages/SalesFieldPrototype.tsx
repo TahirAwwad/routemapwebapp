@@ -2,11 +2,12 @@
 // Sales Field — mobile-first CRM + route prototype
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Link } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronDown,
+  CheckCircle2,
   ExternalLink,
   Loader2,
   LogOut,
@@ -14,9 +15,9 @@ import {
   RefreshCw,
   Route,
   Search,
-  Star,
   List,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MapView } from "@/components/Map";
@@ -260,26 +261,6 @@ function LeadSearchField({
           ))}
         </ul>
       )}
-    </div>
-  );
-}
-
-function StarRow({ label, value }: { label: string; value: number }) {
-  const v = Math.max(0, Math.min(5, Math.round(value)));
-  return (
-    <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="text-muted-foreground shrink-0">{label}</span>
-      <div className="flex items-center gap-0.5" aria-label={`${label} ${v} of 5`}>
-        {Array.from({ length: 5 }, (_, i) => (
-          <Star
-            key={i}
-            className={cn(
-              "w-3 h-3",
-              i < v ? "fill-amber-400 text-amber-500" : "text-muted-foreground/25"
-            )}
-          />
-        ))}
-      </div>
     </div>
   );
 }
@@ -532,6 +513,7 @@ function SalesFieldInner() {
   });
   const { logout } = useAuth();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [visitedIds, setVisitedIds] = useState<string[]>([]);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [browseTab, setBrowseTab] = useState<"list" | "map">("list");
@@ -596,32 +578,49 @@ function SalesFieldInner() {
     });
   };
 
+  const removeFromSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => prev.filter((x) => x !== id));
+  }, []);
+
+  const markVisited = useCallback((id: string) => {
+    setVisitedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setSelectedIds((prev) => prev.filter((x) => x !== id));
+  }, []);
+
   const selectAllFiltered = useCallback(() => {
-    const ids = filtered.map((l) => l.id);
+    const ids = filtered.map((l) => l.id).filter((id) => !visitedIds.includes(id));
     setSelectedIds(ids);
-  }, [filtered]);
+  }, [filtered, visitedIds]);
 
   const openDetail = useCallback((lead: Lead) => {
     setDetailLead(lead);
     setDrawerOpen(true);
   }, []);
 
+  const activeSelectedIds = useMemo(
+    () => selectedIds.filter((id) => !visitedIds.includes(id)),
+    [selectedIds, visitedIds]
+  );
+
   const handleOptimise = () => {
     if (!hasGoogleMapsKey()) {
       toast.info("Route optimisation needs a Google Maps API key. Browse map uses OpenStreetMap.");
       return;
     }
-    const ordered = selectedIds
+    const ordered = activeSelectedIds
       .map((id) => leadById.get(id))
       .filter((l): l is Lead => Boolean(l));
-    if (ordered.length < 2) return;
+    if (ordered.length < 2) {
+      toast.info("Select at least 2 non-visited leads.");
+      return;
+    }
     loadFromCSV(ordered.map(leadToStopPayload));
     setTimeout(() => {
       void runOptimisation();
     }, 0);
   };
 
-  const canOptimise = selectedIds.length >= 2 && !isOptimising;
+  const canOptimise = activeSelectedIds.length >= 2 && !isOptimising;
 
   const resultsActive = step === "results" && result;
 
@@ -820,7 +819,10 @@ function SalesFieldInner() {
               <LeadList
                 leads={filtered}
                 selectedIds={selectedIds}
+                visitedIds={visitedIds}
                 onToggle={toggleSelect}
+                onRemove={removeFromSelection}
+                onMarkVisited={markVisited}
                 onOpenDetail={openDetail}
               />
             </TabsContent>
@@ -847,7 +849,10 @@ function SalesFieldInner() {
               <LeadList
                 leads={filtered}
                 selectedIds={selectedIds}
+                visitedIds={visitedIds}
                 onToggle={toggleSelect}
+                onRemove={removeFromSelection}
+                onMarkVisited={markVisited}
                 onOpenDetail={openDetail}
               />
             </div>
@@ -884,7 +889,7 @@ function SalesFieldInner() {
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur-md px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-lg mx-auto flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground shrink-0">
-              <span className="font-mono font-semibold text-foreground">{selectedIds.length}</span>{" "}
+              <span className="font-mono font-semibold text-foreground">{activeSelectedIds.length}</span>{" "}
               selected
             </p>
             <div className="flex items-center gap-2">
@@ -973,12 +978,6 @@ function SalesFieldInner() {
                     </p>
                   </div>
                 </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-1">
-                    Rating
-                  </p>
-                  <StarRow label="Score" value={detailLead.ratingScore} />
-                </div>
                 <Button className="w-full min-h-11" variant="outline" asChild>
                   <a
                     href={leadGoogleMapsUrl(detailLead)}
@@ -998,6 +997,13 @@ function SalesFieldInner() {
                 >
                   {selectedIds.includes(detailLead.id) ? "Remove from route" : "Add to route"}
                 </Button>
+                <Button
+                  className="w-full min-h-11"
+                  variant="outline"
+                  onClick={() => markVisited(detailLead.id)}
+                >
+                  Mark as visited
+                </Button>
               </div>
             </>
           )}
@@ -1010,81 +1016,141 @@ function SalesFieldInner() {
 function LeadList({
   leads,
   selectedIds,
+  visitedIds,
   onToggle,
+  onRemove,
+  onMarkVisited,
   onOpenDetail,
 }: {
   leads: Lead[];
   selectedIds: string[];
+  visitedIds: string[];
   onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
+  onMarkVisited: (id: string) => void;
   onOpenDetail: (lead: Lead) => void;
 }) {
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-2">
       {leads.map((lead) => {
         const sel = selectedIds.indexOf(lead.id);
         const selected = sel >= 0;
+        const visited = visitedIds.includes(lead.id);
         return (
           <li key={lead.id}>
-            <button
-              type="button"
-              onClick={() => onOpenDetail(lead)}
-              className={cn(
-                "w-full text-left rounded-xl border p-4 transition-colors",
-                selected ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-secondary/40"
-              )}
+            <SwipeLeadItem
+              onSwipeLeft={() => onRemove(lead.id)}
+              onSwipeRight={() => onMarkVisited(lead.id)}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {selected && (
-                      <span className="inline-flex items-center justify-center min-w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-mono font-bold">
-                        {sel + 1}
-                      </span>
+              <button
+                type="button"
+                onClick={() => onOpenDetail(lead)}
+                className={cn(
+                  "w-full text-left rounded-2xl border px-3 py-3 transition-colors",
+                  "bg-slate-900 text-slate-100 border-slate-700 hover:bg-slate-800",
+                  selected && "ring-2 ring-cyan-400/70",
+                  visited && "opacity-75"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={cn(
+                      "mt-0.5 h-10 w-10 rounded-full shrink-0 flex items-center justify-center text-sm font-semibold",
+                      visited ? "bg-emerald-500/20 text-emerald-300" : "bg-cyan-500/20 text-cyan-200"
                     )}
-                    <span className="font-semibold text-sm leading-tight">{lead.name}</span>
+                  >
+                    {lead.name
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((s) => s[0] ?? "")
+                      .join("")
+                      .toUpperCase()}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {lead.city}, {lead.state}
-                  </p>
-                  <p className="text-lg font-mono font-bold tracking-tight mt-2">
-                    {formatMoney(lead.totalSales)}
-                  </p>
-                  <div className="mt-2">
-                    <StarRow label="Rating" value={lead.ratingScore} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-[15px] leading-tight truncate">{lead.name}</p>
+                      <p className="text-xs text-slate-300 shrink-0">{formatMoney(lead.totalSales)}</p>
+                    </div>
+                    <p className="text-sm text-slate-300 mt-1 truncate">{lead.address}</p>
+                    <div className="mt-1.5 flex items-center gap-2 text-[11px]">
+                      {selected && (
+                        <span className="inline-flex items-center rounded-full bg-cyan-500/20 text-cyan-200 px-2 py-0.5">
+                          In route #{sel + 1}
+                        </span>
+                      )}
+                      {visited && (
+                        <span className="inline-flex items-center rounded-full bg-emerald-500/20 text-emerald-300 px-2 py-0.5">
+                          Visited
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={selected ? "secondary" : "outline"}
-                  className="min-h-11 flex-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggle(lead.id);
-                  }}
-                >
-                  {selected ? "Deselect" : "Select"}
-                </Button>
-                <Button variant="outline" size="sm" className="min-h-11 flex-1 px-2" asChild>
-                  <a
-                    href={leadGoogleMapsUrl(lead)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    title="Open in Google Maps"
-                  >
-                    <MapPin className="w-3.5 h-3.5 mr-1 shrink-0" />
-                    Maps
-                  </a>
-                </Button>
-              </div>
-            </button>
+              </button>
+            </SwipeLeadItem>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+function SwipeLeadItem({
+  children,
+  onSwipeLeft,
+  onSwipeRight,
+}: {
+  children: ReactNode;
+  onSwipeLeft: () => void;
+  onSwipeRight: () => void;
+}) {
+  const [x, setX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startXRef = useRef(0);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    startXRef.current = e.clientX;
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    const dx = e.clientX - startXRef.current;
+    setX(Math.max(-120, Math.min(120, dx)));
+  };
+
+  const onPointerUp = () => {
+    if (!dragging) return;
+    setDragging(false);
+    if (x <= -72) onSwipeLeft();
+    if (x >= 72) onSwipeRight();
+    setX(0);
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      <div className="absolute inset-0 flex items-center justify-between px-3 text-xs font-semibold">
+        <div className="h-full w-1/2 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center pl-2">
+          <CheckCircle2 className="w-4 h-4 mr-1.5" />
+          Visited
+        </div>
+        <div className="h-full w-1/2 bg-rose-500/15 text-rose-700 dark:text-rose-300 flex items-center justify-end pr-2">
+          Remove
+          <Trash2 className="w-4 h-4 ml-1.5" />
+        </div>
+      </div>
+      <div
+        className={cn("relative touch-pan-y", dragging ? "transition-none" : "transition-transform duration-200")}
+        style={{ transform: `translateX(${x}px)` }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
