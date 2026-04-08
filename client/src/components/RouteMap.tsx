@@ -50,9 +50,14 @@ interface TooltipInfo {
   y: number;
 }
 
-export function RouteMap() {
+export function RouteMap({
+  driverLocation,
+}: {
+  driverLocation?: { lat: number; lng: number } | null;
+} = {}) {
   const { stops, result, mapRef, hoveredStopId, setHoveredStopId, selectedSegment } = useRoute();
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const driverMarkerRef = useRef<google.maps.Marker | null>(null);
   // Multiple renderers — one per segment
   const renderersRef = useRef<google.maps.DirectionsRenderer[]>([]);
   const mapReadyRef = useRef(false);
@@ -80,6 +85,10 @@ export function RouteMap() {
     // Clear existing markers
     markersRef.current.forEach((m) => (m.map = null));
     markersRef.current = [];
+    if (driverMarkerRef.current) {
+      driverMarkerRef.current.setMap(null);
+      driverMarkerRef.current = null;
+    }
 
     // Clear existing renderers
     clearRenderers();
@@ -127,6 +136,23 @@ export function RouteMap() {
 
       markersRef.current.push(marker);
     });
+    if (driverLocation) {
+      driverMarkerRef.current = new google.maps.Marker({
+        map,
+        position: { lat: driverLocation.lat, lng: driverLocation.lng },
+        title: "Driver location",
+        zIndex: 1000,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: "#111827",
+          fillOpacity: 1,
+          strokeColor: "#67e8f9",
+          strokeWeight: 5,
+          scale: 8,
+        },
+      });
+      bounds.extend({ lat: driverLocation.lat, lng: driverLocation.lng });
+    }
 
     // Fit bounds
     if (currentStops.length === 1) {
@@ -144,7 +170,7 @@ export function RouteMap() {
         renderSegmentPolyline(map, seg.orderedStops, si);
       });
     }
-  }, [stops, result, mapRef, hoveredStopId, setHoveredStopId, clearRenderers, selectedSegment, allStops]); // eslint-disable-line
+  }, [stops, result, mapRef, hoveredStopId, setHoveredStopId, clearRenderers, selectedSegment, allStops, driverLocation]); // eslint-disable-line
 
   function showTooltipForStop(
     stop: Stop,

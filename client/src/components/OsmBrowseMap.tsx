@@ -15,6 +15,7 @@ export interface OsmBrowseMapProps {
   fitKey: string;
   highlightedId: string | null;
   onMarkerClick: (lead: OsmBrowseMapLead) => void;
+  driverLocation?: { lat: number; lng: number } | null;
   className?: string;
 }
 
@@ -26,6 +27,7 @@ export function OsmBrowseMap({
   fitKey,
   highlightedId,
   onMarkerClick,
+  driverLocation,
   className,
 }: OsmBrowseMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -89,6 +91,27 @@ export function OsmBrowseMap({
       cm.addTo(layer);
       bounds = bounds ? bounds.extend(ll) : L.latLngBounds(ll, ll);
     }
+    if (driverLocation) {
+      const driverLL = L.latLng(driverLocation.lat, driverLocation.lng);
+      const halo = L.circleMarker(driverLL, {
+        radius: 16,
+        fillColor: "#22d3ee",
+        fillOpacity: 0.22,
+        color: "#67e8f9",
+        weight: 1,
+      });
+      const driver = L.circleMarker(driverLL, {
+        radius: 7,
+        fillColor: "#111827",
+        fillOpacity: 1,
+        color: "#ffffff",
+        weight: 2,
+      });
+      driver.bindTooltip("Driver location");
+      halo.addTo(layer);
+      driver.addTo(layer);
+      bounds = bounds ? bounds.extend(driverLL) : L.latLngBounds(driverLL, driverLL);
+    }
 
     const shouldFit = lastFitKeyRef.current !== fitKey;
     if (!shouldFit) return;
@@ -101,7 +124,7 @@ export function OsmBrowseMap({
     } else if (bounds?.isValid()) {
       map.fitBounds(bounds, { padding: [56, 56] });
     }
-  }, [leads, fitKey, highlightedId]);
+  }, [leads, fitKey, highlightedId, driverLocation]);
 
   return <div ref={containerRef} className={cn("w-full h-full min-h-[280px]", className)} />;
 }

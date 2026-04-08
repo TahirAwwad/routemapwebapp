@@ -11,6 +11,7 @@ import {
   Loader2,
   LogOut,
   Map as MapIcon,
+  RefreshCw,
   Route,
   Search,
   Star,
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/drawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { RouteProvider, useRoute } from "@/contexts/RouteContext";
+import { useDriverLocation } from "@/hooks/useDriverLocation";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   filterLeads,
@@ -297,6 +299,7 @@ type LeadsBrowseMapProps = {
   leads: Lead[];
   fitKey: string;
   highlightedId: string | null;
+  driverLocation: { lat: number; lng: number } | null;
   onMarkerClick: (lead: Lead) => void;
 };
 
@@ -304,10 +307,12 @@ function GoogleLeadsBrowseMap({
   leads,
   fitKey,
   highlightedId,
+  driverLocation,
   onMarkerClick,
 }: LeadsBrowseMapProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
+  const driverMarkerRef = useRef<google.maps.Marker | null>(null);
   const lastFitKeyRef = useRef<string>("");
 
   const rebuildMarkers = useCallback(() => {
@@ -318,6 +323,10 @@ function GoogleLeadsBrowseMap({
       m.setMap(null);
     });
     markersRef.current = [];
+    if (driverMarkerRef.current) {
+      driverMarkerRef.current.setMap(null);
+      driverMarkerRef.current = null;
+    }
 
     const bounds = new google.maps.LatLngBounds();
     leads.forEach((lead) => {
@@ -331,6 +340,23 @@ function GoogleLeadsBrowseMap({
       marker.addListener("click", () => onMarkerClick(lead));
       markersRef.current.push(marker);
     });
+    if (driverLocation) {
+      driverMarkerRef.current = new google.maps.Marker({
+        map,
+        position: { lat: driverLocation.lat, lng: driverLocation.lng },
+        title: "Driver location",
+        zIndex: 999,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: "#111827",
+          fillOpacity: 1,
+          strokeColor: "#67e8f9",
+          strokeWeight: 5,
+          scale: 8,
+        },
+      });
+      bounds.extend({ lat: driverLocation.lat, lng: driverLocation.lng });
+    }
 
     const shouldFit = lastFitKeyRef.current !== fitKey;
     if (!shouldFit) return;
@@ -345,7 +371,7 @@ function GoogleLeadsBrowseMap({
     } else {
       map.fitBounds(bounds, { top: 56, right: 56, bottom: 56, left: 56 });
     }
-  }, [leads, fitKey, highlightedId, onMarkerClick]);
+  }, [leads, fitKey, highlightedId, driverLocation, onMarkerClick]);
 
   useEffect(() => {
     rebuildMarkers();
@@ -380,6 +406,7 @@ function LeadsBrowseMap(props: LeadsBrowseMapProps) {
       leads={props.leads.map((l) => ({ id: l.id, lat: l.lat, lng: l.lng, name: l.name }))}
       fitKey={props.fitKey}
       highlightedId={props.highlightedId}
+      driverLocation={props.driverLocation}
       onMarkerClick={(pin) => {
         const lead = props.leads.find((l) => l.id === pin.id);
         if (lead) props.onMarkerClick(lead);
@@ -394,6 +421,7 @@ function MapPinsRouteSegment({
   leads,
   fitKey,
   highlightedId,
+  driverLocation,
   onMarkerClick,
 }: {
   mapSubMode: "pins" | "route";
@@ -401,6 +429,7 @@ function MapPinsRouteSegment({
   leads: Lead[];
   fitKey: string;
   highlightedId: string | null;
+  driverLocation: { lat: number; lng: number } | null;
   onMarkerClick: (lead: Lead) => void;
 }) {
   const { result } = useRoute();
@@ -444,11 +473,12 @@ function MapPinsRouteSegment({
             leads={leads}
             fitKey={fitKey}
             highlightedId={highlightedId}
+            driverLocation={driverLocation}
             onMarkerClick={onMarkerClick}
           />
         ) : result ? (
           hasGoogleMapsKey() ? (
-            <RouteMap />
+            <RouteMap driverLocation={driverLocation} />
           ) : (
             <div className="absolute inset-0 flex flex-col min-h-0">
               <OsmBrowseMap
@@ -461,6 +491,7 @@ function MapPinsRouteSegment({
                 }))}
                 fitKey={routeOsmFitKey}
                 highlightedId={null}
+                driverLocation={driverLocation}
                 onMarkerClick={() => {}}
               />
               <p className="shrink-0 px-3 py-2 text-center text-xs text-muted-foreground bg-muted/40 border-t border-border">
@@ -505,32 +536,30 @@ function SalesFieldInner() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [browseTab, setBrowseTab] = useState<"list" | "map">("list");
   const [mapSubMode, setMapSubMode] = useState<"pins" | "route">("pins");
+  const { location: driverLocation } = useDriverLocation(true);
 
   useEffect(() => {
     if (!result) setMapSubMode("pins");
   }, [result]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const reloadLeads = useCallback(async (opts?: { silent?: boolean }) => {
     setLeadsLoading(true);
     setLeadsError(null);
-    void loadLeads()
-      .then((data) => {
-        if (!cancelled) setLeads(data);
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setLeadsError(e instanceof Error ? e.message : "Failed to load leads");
-          setLeads([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLeadsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const data = await loadLeads();
+      setLeads(data);
+      if (!opts?.silent) toast.success(`Synced ${data.length} leads`);
+    } catch (e) {
+      setLeadsError(e instanceof Error ? e.message : "Failed to load leads");
+      setLeads([]);
+    } finally {
+      setLeadsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void reloadLeads({ silent: true });
+  }, [reloadLeads]);
 
   const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters]);
 
@@ -566,6 +595,11 @@ function SalesFieldInner() {
       return [...prev, id];
     });
   };
+
+  const selectAllFiltered = useCallback(() => {
+    const ids = filtered.map((l) => l.id);
+    setSelectedIds(ids);
+  }, [filtered]);
 
   const openDetail = useCallback((lead: Lead) => {
     setDetailLead(lead);
@@ -653,7 +687,7 @@ function SalesFieldInner() {
             </div>
           </aside>
           <main className="flex-1 relative min-h-[200px] overflow-hidden">
-            <RouteMap />
+            <RouteMap driverLocation={driverLocation} />
           </main>
         </div>
 
@@ -711,6 +745,19 @@ function SalesFieldInner() {
           leads={leads}
           onChange={(search) => setFilters((f) => ({ ...f, search }))}
         />
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 text-xs"
+            disabled={leadsLoading}
+            onClick={() => void reloadLeads()}
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", leadsLoading && "animate-spin")} />
+            Sync raw data
+          </Button>
+        </div>
 
         <Collapsible defaultOpen className="rounded-lg border border-border bg-card/50">
           <CollapsibleTrigger asChild>
@@ -788,6 +835,7 @@ function SalesFieldInner() {
                   leads={filtered}
                   fitKey={fitKey}
                   highlightedId={detailLead?.id ?? null}
+                  driverLocation={driverLocation}
                   onMarkerClick={openDetail}
                 />
               </div>
@@ -811,6 +859,7 @@ function SalesFieldInner() {
                   leads={filtered}
                   fitKey={fitKey}
                   highlightedId={detailLead?.id ?? null}
+                  driverLocation={driverLocation}
                   onMarkerClick={openDetail}
                 />
               </div>
@@ -838,13 +887,24 @@ function SalesFieldInner() {
               <span className="font-mono font-semibold text-foreground">{selectedIds.length}</span>{" "}
               selected
             </p>
-            <Button
-              className="min-h-11 px-6 font-semibold"
-              disabled={!canOptimise}
-              onClick={handleOptimise}
-            >
-              Optimise route
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 px-4"
+                disabled={filtered.length === 0}
+                onClick={selectAllFiltered}
+              >
+                Add all leads
+              </Button>
+              <Button
+                className="min-h-11 px-6 font-semibold"
+                disabled={!canOptimise}
+                onClick={handleOptimise}
+              >
+                Optimise route
+              </Button>
+            </div>
           </div>
         </div>
       </div>
