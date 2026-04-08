@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ExternalLink,
   Loader2,
+  LogOut,
   Map as MapIcon,
   Route,
   Search,
@@ -24,6 +25,11 @@ import { RouteMap } from "@/components/RouteMap";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -33,20 +39,117 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
+import { useAuth } from "@/contexts/AuthContext";
 import { RouteProvider, useRoute } from "@/contexts/RouteContext";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   filterLeads,
   formatMoney,
+  leadGoogleMapsUrl,
   leadToStopPayload,
   loadLeads,
+  uniqueCities,
   uniqueStates,
   type Lead,
   type LeadFilters,
 } from "@/lib/leads";
 import { hasGoogleMapsKey } from "@/lib/mapBackend";
-import { getSearchSuggestions } from "@/lib/searchSuggest";
+import { getSearchSuggestions, type SearchSuggestion } from "@/lib/searchSuggest";
 import { cn } from "@/lib/utils";
+
+function LocationMultiSelect({
+  label,
+  allSummary,
+  options,
+  selected,
+  onSelectedChange,
+  disabled,
+}: {
+  label: string;
+  allSummary: string;
+  options: string[];
+  selected: string[];
+  onSelectedChange: (next: string[]) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const summary =
+    selected.length === 0
+      ? allSummary
+      : selected.length <= 2
+        ? selected.join(", ")
+        : `${selected.slice(0, 2).join(", ")} (+${selected.length - 2})`;
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled || options.length === 0}
+            className="w-full min-h-11 justify-between font-normal px-3"
+          >
+            <span className="truncate text-left">{summary}</span>
+            <ChevronDown className="w-4 h-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          sideOffset={4}
+          collisionPadding={12}
+          className={cn(
+            "p-0 min-w-0 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md z-[100]",
+            "w-[var(--radix-popover-trigger-width)] max-w-[min(100vw-1.5rem,var(--radix-popover-trigger-width))]"
+          )}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border shrink-0">
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+              onClick={() => onSelectedChange([])}
+            >
+              Clear all
+            </button>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+              onClick={() => onSelectedChange([...options])}
+            >
+              Select all
+            </button>
+          </div>
+          <div className="max-h-[min(240px,45vh)] overflow-y-auto overflow-x-hidden overscroll-contain">
+            <ul className="p-2 space-y-0.5 w-full min-w-0">
+              {options.map((opt) => {
+                const checked = selected.includes(opt);
+                return (
+                  <li key={opt} className="min-w-0">
+                    <label className="flex items-center gap-2 rounded-md px-2 py-2 min-h-11 hover:bg-muted/60 cursor-pointer text-sm min-w-0">
+                      <Checkbox
+                        checked={checked}
+                        className="shrink-0"
+                        onCheckedChange={(v) => {
+                          const on = v === true;
+                          const next = new Set(selected);
+                          if (on) next.add(opt);
+                          else next.delete(opt);
+                          onSelectedChange(Array.from(next).sort((a, b) => a.localeCompare(b)));
+                        }}
+                      />
+                      <span className="truncate min-w-0 flex-1 text-left">{opt}</span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
 
 function LeadSearchField({
   value,
@@ -84,8 +187,8 @@ function LeadSearchField({
     }
   };
 
-  const pick = (text: string) => {
-    onChange(text);
+  const pick = (s: SearchSuggestion) => {
+    onChange(s.applyText);
     setOpen(false);
     setHighlight(0);
   };
@@ -99,7 +202,7 @@ function LeadSearchField({
         aria-autocomplete="list"
         aria-controls="lead-search-suggestions"
         className="pl-9 min-h-11"
-        placeholder="Search name, city, state…"
+        placeholder="Search client name or code…"
         autoComplete="off"
         value={value}
         disabled={disabled}
@@ -125,7 +228,7 @@ function LeadSearchField({
             setHighlight((i) => Math.max(i - 1, 0));
           } else if (e.key === "Enter") {
             e.preventDefault();
-            pick(suggestions[highlight] ?? suggestions[0]);
+            pick(suggestions[highlight] ?? suggestions[0]!);
           } else if (e.key === "Escape") {
             setOpen(false);
           }
@@ -138,7 +241,7 @@ function LeadSearchField({
           className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-56 overflow-y-auto overflow-x-hidden rounded-md border border-border bg-popover py-1 shadow-md"
         >
           {suggestions.map((s, i) => (
-            <li key={`${s}-${i}`} role="option" aria-selected={i === highlight}>
+            <li key={`${s.display}-${i}`} role="option" aria-selected={i === highlight}>
               <button
                 type="button"
                 className={cn(
@@ -149,7 +252,7 @@ function LeadSearchField({
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => pick(s)}
               >
-                {s}
+                {s.display}
               </button>
             </li>
           ))}
@@ -182,11 +285,11 @@ function StarRow({ label, value }: { label: string; value: number }) {
 function browseMarkerIcon(highlighted: boolean): google.maps.Symbol {
   return {
     path: google.maps.SymbolPath.CIRCLE,
-    fillColor: highlighted ? "#0d9488" : "#2563eb",
+    fillColor: highlighted ? "#0f766e" : "#1d4ed8",
     fillOpacity: 1,
     strokeColor: "#ffffff",
-    strokeWeight: 2,
-    scale: highlighted ? 9 : 7,
+    strokeWeight: 4,
+    scale: highlighted ? 12 : 10,
   };
 }
 
@@ -394,8 +497,9 @@ function SalesFieldInner() {
   const [filters, setFilters] = useState<LeadFilters>({
     search: "",
     states: [],
+    cities: [],
   });
-  const [statePopoverOpen, setStatePopoverOpen] = useState(false);
+  const { logout } = useAuth();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -432,10 +536,22 @@ function SalesFieldInner() {
 
   const fitKey = useMemo(() => {
     const statesPart = [...filters.states].sort().join("|");
-    return `${statesPart}|${filters.search.trim()}|${filtered.map((l) => l.id).join(",")}`;
-  }, [filters.states, filters.search, filtered]);
+    const citiesPart = [...filters.cities].sort().join("|");
+    return `${statesPart}|${citiesPart}|${filters.search.trim()}|${filtered.map((l) => l.id).join(",")}`;
+  }, [filters.states, filters.cities, filters.search, filtered]);
 
   const stateOptions = useMemo(() => uniqueStates(leads), [leads]);
+  const cityOptions = useMemo(() => uniqueCities(leads, filters.states), [leads, filters.states]);
+
+  useEffect(() => {
+    const allowed = new Set(cityOptions);
+    setFilters((f) => {
+      if (f.cities.length === 0) return f;
+      const next = f.cities.filter((c) => allowed.has(c.trim()));
+      if (next.length === f.cities.length) return f;
+      return { ...f, cities: next };
+    });
+  }, [cityOptions]);
 
   const leadById = useMemo(() => {
     const m = new Map<string, Lead>();
@@ -489,6 +605,16 @@ function SalesFieldInner() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 text-xs text-sidebar-foreground"
+              onClick={() => logout()}
+            >
+              <LogOut className="w-3.5 h-3.5 mr-1" />
+              Log out
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -545,16 +671,26 @@ function SalesFieldInner() {
 
   return (
     <div className="h-[100dvh] flex flex-col overflow-hidden bg-background">
-      <header className="shrink-0 border-b border-border bg-card px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+      <header className="shrink-0 border-b border-border bg-card px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
             <Route className="w-4 h-4 text-primary" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-sm font-bold tracking-tight">Sales field</h1>
             <p className="text-xs text-muted-foreground">Leads · route</p>
           </div>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 h-9 text-xs"
+          onClick={() => logout()}
+        >
+          <LogOut className="w-3.5 h-3.5 mr-1" />
+          Log out
+        </Button>
       </header>
 
       <div className="shrink-0 p-3 space-y-3 border-b border-border bg-muted/30">
@@ -576,83 +712,39 @@ function SalesFieldInner() {
           onChange={(search) => setFilters((f) => ({ ...f, search }))}
         />
 
-        <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            States
-          </p>
-          <Popover open={statePopoverOpen} onOpenChange={setStatePopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={leadsLoading || leads.length === 0}
-                className="w-full min-h-11 justify-between font-normal px-3"
-              >
-                <span className="truncate text-left">
-                  {filters.states.length === 0
-                    ? "All states"
-                    : filters.states.length <= 2
-                      ? filters.states.join(", ")
-                      : `${filters.states.slice(0, 2).join(", ")} (+${filters.states.length - 2})`}
-                </span>
-                <ChevronDown className="w-4 h-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              sideOffset={4}
-              collisionPadding={12}
-              className={cn(
-                "p-0 min-w-0 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md z-[100]",
-                "w-[var(--radix-popover-trigger-width)] max-w-[min(100vw-1.5rem,var(--radix-popover-trigger-width))]"
-              )}
+        <Collapsible defaultOpen className="rounded-lg border border-border bg-card/50">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="group flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors rounded-lg"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border shrink-0">
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                  onClick={() => setFilters((f) => ({ ...f, states: [] }))}
-                >
-                  Clear all
-                </button>
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                  onClick={() => setFilters((f) => ({ ...f, states: [...stateOptions] }))}
-                >
-                  Select all
-                </button>
-              </div>
-              <div className="max-h-[min(240px,45vh)] overflow-y-auto overflow-x-hidden overscroll-contain">
-                <ul className="p-2 space-y-0.5 w-full min-w-0">
-                  {stateOptions.map((s) => {
-                    const checked = filters.states.includes(s);
-                    return (
-                      <li key={s} className="min-w-0">
-                        <label className="flex items-center gap-2 rounded-md px-2 py-2 min-h-11 hover:bg-muted/60 cursor-pointer text-sm min-w-0">
-                          <Checkbox
-                            checked={checked}
-                            className="shrink-0"
-                            onCheckedChange={(v) => {
-                              const on = v === true;
-                              setFilters((f) => {
-                                const next = new Set(f.states);
-                                if (on) next.add(s);
-                                else next.delete(s);
-                                return { ...f, states: [...next].sort((a, b) => a.localeCompare(b)) };
-                              });
-                            }}
-                          />
-                          <span className="truncate min-w-0 flex-1 text-left">{s}</span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Location filters
+              </span>
+              <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="px-3 pb-3 pt-0 space-y-3 border-t border-border/60">
+              <LocationMultiSelect
+                label="State"
+                allSummary="All states"
+                options={stateOptions}
+                selected={filters.states}
+                disabled={leadsLoading || leads.length === 0}
+                onSelectedChange={(states) => setFilters((f) => ({ ...f, states }))}
+              />
+              <LocationMultiSelect
+                label="City"
+                allSummary="All cities"
+                options={cityOptions}
+                selected={filters.cities}
+                disabled={leadsLoading || leads.length === 0}
+                onSelectedChange={(cities) => setFilters((f) => ({ ...f, cities }))}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
 
       <div className="flex-1 flex flex-col min-h-0 relative">
@@ -827,6 +919,16 @@ function SalesFieldInner() {
                   </p>
                   <StarRow label="Score" value={detailLead.ratingScore} />
                 </div>
+                <Button className="w-full min-h-11" variant="outline" asChild>
+                  <a
+                    href={leadGoogleMapsUrl(detailLead)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Open in Google Maps
+                  </a>
+                </Button>
                 <Button
                   className="w-full min-h-11"
                   variant={selectedIds.includes(detailLead.id) ? "secondary" : "default"}
@@ -904,6 +1006,18 @@ function LeadList({
                   }}
                 >
                   {selected ? "Deselect" : "Select"}
+                </Button>
+                <Button variant="outline" size="sm" className="min-h-11 flex-1 px-2" asChild>
+                  <a
+                    href={leadGoogleMapsUrl(lead)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title="Open in Google Maps"
+                  >
+                    <MapPin className="w-3.5 h-3.5 mr-1 shrink-0" />
+                    Maps
+                  </a>
                 </Button>
               </div>
             </button>

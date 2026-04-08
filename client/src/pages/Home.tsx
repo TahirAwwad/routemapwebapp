@@ -16,6 +16,7 @@ import {
   Trash2,
   AlertCircle,
   Route,
+  LogOut,
   ChevronRight,
   ChevronDown,
   Plus,
@@ -33,9 +34,11 @@ import { StopList } from "@/components/StopList";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { RouteMap } from "@/components/RouteMap";
 import { CityFilter } from "@/components/CityFilter";
+import { useAuth } from "@/contexts/AuthContext";
 import { RouteProvider, useRoute } from "@/contexts/RouteContext";
 
 function AppContent() {
+  const { logout } = useAuth();
   const {
     stops,
     step,
@@ -107,6 +110,16 @@ function AppContent() {
 
         {/* Right side: badges + actions */}
         <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-sidebar-foreground shrink-0"
+            onClick={() => logout()}
+          >
+            <LogOut className="w-3 h-3 mr-1" />
+            Log out
+          </Button>
           {stops.length > 0 && (
             <>
               <Badge

@@ -26,6 +26,8 @@ export interface LeadFilters {
   search: string;
   /** Empty array = all states (no filter). Otherwise lead.state (trimmed) must be in the set. */
   states: string[];
+  /** Empty array = all cities (no filter). Otherwise lead.city (trimmed) must be in the set. */
+  cities: string[];
 }
 
 const ORDER_SUMMARIES = [
@@ -191,7 +193,30 @@ export function uniqueStates(leads: Lead[]): string[] {
     const s = l.state.trim();
     if (s) set.add(s);
   }
-  return [...set].sort((a, b) => a.localeCompare(b));
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+/** City options; when `statesFilter` is non-empty, only cities in those states are listed. */
+export function uniqueCities(leads: Lead[], statesFilter: string[]): string[] {
+  const stateSet =
+    statesFilter.length > 0
+      ? new Set(statesFilter.map((s) => s.trim()).filter(Boolean))
+      : null;
+  const set = new Set<string>();
+  for (const l of leads) {
+    if (stateSet && !stateSet.has(l.state.trim())) continue;
+    const c = l.city.trim();
+    if (c) set.add(c);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+export function leadGoogleMapsUrl(lead: Lead): string {
+  if (Number.isFinite(lead.lat) && Number.isFinite(lead.lng)) {
+    return `https://www.google.com/maps/search/?api=1&query=${lead.lat},${lead.lng}`;
+  }
+  const q = [lead.address, lead.city, lead.state].filter(Boolean).join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
 export function filterLeads(leads: Lead[], filters: LeadFilters): Lead[] {
@@ -200,16 +225,26 @@ export function filterLeads(leads: Lead[], filters: LeadFilters): Lead[] {
     filters.states.length > 0
       ? new Set(filters.states.map((s) => s.trim()).filter(Boolean))
       : null;
+  const citySet =
+    filters.cities.length > 0
+      ? new Set(filters.cities.map((c) => c.trim()).filter(Boolean))
+      : null;
 
   return leads.filter((lead) => {
     if (stateSet) {
       const ls = lead.state.trim();
       if (!stateSet.has(ls)) return false;
     }
+    if (citySet) {
+      const lc = lead.city.trim();
+      if (!citySet.has(lc)) return false;
+    }
     if (q) {
-      const hay = `${lead.clientNumber} ${lead.name} ${lead.city} ${lead.state} ${lead.address}`
-        .toLowerCase();
-      if (!hay.includes(q)) return false;
+      const name = lead.name.trim().toLowerCase();
+      const code = lead.clientNumber.trim().toLowerCase();
+      const nameMatch = name.includes(q);
+      const codeMatch = code.includes(q);
+      if (!nameMatch && !codeMatch) return false;
     }
     return true;
   });

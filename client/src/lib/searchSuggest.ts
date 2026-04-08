@@ -33,43 +33,75 @@ function tokenMatches(haystack: string, needle: string): boolean {
   return false;
 }
 
+export interface SearchSuggestion {
+  /** Row label in the dropdown */
+  display: string;
+  /** Value written into the search field when the row is chosen */
+  applyText: string;
+}
+
 export function getSearchSuggestions(
   query: string,
   leads: Lead[],
   max = 8
-): string[] {
+): SearchSuggestion[] {
   const q = query.trim();
   if (q.length < 1) return [];
 
+  const ql = q.toLowerCase();
   const seen = new Set<string>();
-  const scored: { text: string; score: number }[] = [];
+  const scored: { display: string; applyText: string; score: number }[] = [];
 
   for (const l of leads) {
-    const candidates = [
-      l.name,
-      l.city,
-      l.state,
-      l.clientNumber,
-      l.address,
-    ].filter((x): x is string => Boolean(x && x.trim()));
+    const name = l.name.trim();
+    const code = l.clientNumber.trim();
+    if (!name && !code) continue;
 
-    for (const c of candidates) {
-      const t = c.trim();
-      if (seen.has(t)) continue;
-      const cl = t.toLowerCase();
-      const ql = q.toLowerCase();
+    const nameL = name.toLowerCase();
+    const codeL = code.toLowerCase();
 
-      let score = 0;
-      if (cl.startsWith(ql)) score = 100;
-      else if (cl.includes(ql)) score = 75;
-      else if (tokenMatches(t, q)) score = 45;
-      else continue;
+    let score = 0;
+    let matches = false;
 
-      seen.add(t);
-      scored.push({ text: t, score });
+    if (codeL) {
+      if (codeL.startsWith(ql)) {
+        matches = true;
+        score = 110;
+      } else if (codeL.includes(ql)) {
+        matches = true;
+        score = 90;
+      } else if (tokenMatches(code, q)) {
+        matches = true;
+        score = 48;
+      }
     }
+
+    if (!matches && nameL) {
+      if (nameL.startsWith(ql)) {
+        matches = true;
+        score = Math.max(score, 100);
+      } else if (nameL.includes(ql)) {
+        matches = true;
+        score = Math.max(score, 75);
+      } else if (tokenMatches(name, q)) {
+        matches = true;
+        score = Math.max(score, 42);
+      }
+    }
+
+    if (!matches) continue;
+
+    const key = `${code}|${name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const display = code ? `${code} · ${name || "—"}` : name;
+    const codeHit = codeL.startsWith(ql) || codeL.includes(ql) || tokenMatches(code, q);
+    const applyText = code && codeHit ? code : name || code;
+
+    scored.push({ display, applyText, score });
   }
 
-  scored.sort((a, b) => b.score - a.score || a.text.localeCompare(b.text));
-  return scored.slice(0, max).map((x) => x.text);
+  scored.sort((a, b) => b.score - a.score || a.display.localeCompare(b.display));
+  return scored.slice(0, max).map(({ display, applyText }) => ({ display, applyText }));
 }

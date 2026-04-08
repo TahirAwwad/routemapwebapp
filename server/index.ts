@@ -3,6 +3,7 @@ import { createServer } from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { mountAuthRoutes } from "./authRoutes";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,9 @@ async function startServer() {
 
   const staticPath = resolveStaticPath();
 
+  app.use(express.json({ limit: "32kb" }));
+  mountAuthRoutes(app);
+
   app.use(express.static(staticPath));
 
   // Handle client-side routing - serve index.html for all routes
@@ -28,7 +32,7 @@ async function startServer() {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 8787;
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);

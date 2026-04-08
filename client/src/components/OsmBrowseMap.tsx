@@ -72,11 +72,13 @@ export function OsmBrowseMap({
     for (const lead of leads) {
       const isHi = lead.id === highlightedId;
       const ll = L.latLng(lead.lat, lead.lng);
+      const fill = isHi ? "#0f766e" : "#1d4ed8";
+      const ring = isHi ? "#ccfbf1" : "#bfdbfe";
       const cm = L.circleMarker(ll, {
-        radius: isHi ? 9 : 7,
-        fillColor: isHi ? "#0d9488" : "#2563eb",
-        color: "#ffffff",
-        weight: 2,
+        radius: isHi ? 14 : 11,
+        fillColor: fill,
+        color: ring,
+        weight: 4,
         opacity: 1,
         fillOpacity: 1,
       });

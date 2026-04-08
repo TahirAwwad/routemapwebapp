@@ -126,7 +126,7 @@ function loadMapScript(): Promise<void> {
 
     let existing: HTMLScriptElement | null = null;
     const want = new URL(src, document.baseURI).href;
-    for (const el of document.getElementsByTagName("script")) {
+    for (const el of Array.from(document.getElementsByTagName("script"))) {
       try {
         if (el.src && new URL(el.src).href === want) {
           existing = el;
