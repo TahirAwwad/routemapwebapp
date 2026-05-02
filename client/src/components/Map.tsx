@@ -87,6 +87,8 @@ declare global {
   }
 }
 
+const FALLBACK_GOOGLE_MAPS_API_KEY = 'AIzaSyBJ5gEWzKhFl6SG9TWr1w07kOXZc1lZY';
+
 const FORGE_KEY = MAPS_FORGE_KEY;
 const GOOGLE_KEY = MAPS_GOOGLE_KEY;
 
@@ -105,8 +107,9 @@ function scriptSrcForCurrentKeys(): string | null {
   if (FORGE_KEY) {
     return `${MAPS_PROXY_URL}/maps/api/js?key=${encodeURIComponent(FORGE_KEY)}&v=weekly&libraries=${MAP_LIBRARIES}`;
   }
-  if (GOOGLE_KEY) {
-    return `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_KEY)}&v=weekly&libraries=${MAP_LIBRARIES}`;
+  if (GOOGLE_KEY || FALLBACK_GOOGLE_MAPS_API_KEY) {
+    const apiKey = GOOGLE_KEY || FALLBACK_GOOGLE_MAPS_API_KEY;
+    return `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&libraries=${MAP_LIBRARIES}&callback=initMap`;
   }
   return null;
 }
