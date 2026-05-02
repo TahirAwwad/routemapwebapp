@@ -109,7 +109,7 @@ function scriptSrcForCurrentKeys(): string | null {
   }
   if (GOOGLE_KEY || FALLBACK_GOOGLE_MAPS_API_KEY) {
     const apiKey = GOOGLE_KEY || FALLBACK_GOOGLE_MAPS_API_KEY;
-    return `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&libraries=${MAP_LIBRARIES}&callback=initMap`;
+    return `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&libraries=${MAP_LIBRARIES}`;
   }
   return null;
 }
