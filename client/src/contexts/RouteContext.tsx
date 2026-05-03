@@ -13,12 +13,13 @@ import React, {
   useMemo,
 } from "react";
 import { nanoid } from "nanoid";
-import type { Stop, StopRole, OptimisedRoute, AppStep } from "@/lib/types";
+import type { Stop, StopRole, StopStatus, OptimisedRoute, AppStep } from "@/lib/types";
 import { optimiseRoute, type OptimisationProgress } from "@/lib/routeOptimizer";
 
 interface RouteContextValue {
   stops: Stop[];
   filteredStops: Stop[];           // stops after city filter applied
+  selectedStops: Set<string>;      // selected stop IDs for batch actions
   result: OptimisedRoute | null;
   step: AppStep;
   selectedSegment: "all" | number;  // which segment to show on map
@@ -35,6 +36,13 @@ interface RouteContextValue {
   toggleCity: (cityKey: string) => void;
   selectAllCities: () => void;
   excludeAllCities: () => void;
+
+  // Selection & status management
+  toggleStopSelected: (id: string) => void;
+  selectAllStops: () => void;
+  deselectAllStops: () => void;
+  batchSetStatus: (status: StopStatus) => void;
+  setStopStatus: (id: string, status: StopStatus) => void;
 
   addStop: (stop: Omit<Stop, "id" | "role">) => void;
   removeStop: (id: string) => void;
@@ -79,6 +87,7 @@ function cityKey(stop: { city?: string; state?: string }): string {
 
 export function RouteProvider({ children }: { children: React.ReactNode }) {
   const [stops, setStops] = useState<Stop[]>([]);
+  const [selectedStops, setSelectedStops] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<OptimisedRoute | null>(null);
   const [step, setStep] = useState<AppStep>("input");
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +131,50 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // ── Selection & status management ──────────────────────────────
+
+  const toggleStopSelected = useCallback((id: string) => {
+    setSelectedStops((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAllStops = useCallback(() => {
+    setSelectedStops(new Set(stopsRef.current.map((s) => s.id)));
+  }, []);
+
+  const deselectAllStops = useCallback(() => {
+    setSelectedStops(new Set());
+  }, []);
+
+  const setStopStatus = useCallback((id: string, status: StopStatus) => {
+    setStops((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const updates: Partial<Stop> = { status };
+        if (status === "completed" && !s.lastVisit) {
+          updates.lastVisit = new Date();
+        }
+        return { ...s, ...updates };
+      })
+    );
+  }, []);
+
+  const batchSetStatus = useCallback((status: StopStatus) => {
+    const now = status === "completed" ? new Date() : undefined;
+    setStops((prev) =>
+      prev.map((s) => {
+        if (!selectedStops.has(s.id)) return s;
+        const updates: Partial<Stop> = { status };
+        if (now && !s.lastVisit) updates.lastVisit = now;
+        return { ...s, ...updates };
+      })
+    );
+  }, [selectedStops]);
+
   // ── Stop management ──────────────────────────────────────────
 
   const addStop = useCallback((stop: Omit<Stop, "id" | "role">) => {
@@ -131,7 +184,7 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
       const hasDestination = prev.some((s) => s.role === "destination");
       if (!hasOrigin) role = "origin";
       else if (!hasDestination) role = "destination";
-      return [...prev, { ...stop, id: nanoid(), role }];
+      return [...prev, { ...stop, id: nanoid(), role, status: "pending", selected: false }];
     });
   }, []);
 
@@ -153,6 +206,7 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
 
   const clearAllStops = useCallback(() => {
     setStops([]);
+    setSelectedStops(new Set());
     setResult(null);
     setStep("input");
     setError(null);
@@ -170,6 +224,8 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
           : i === newStops.length - 1
           ? "destination"
           : "waypoint",
+      status: "pending" as StopStatus,
+      selected: false,
     }));
     setStops(withIds);
     setResult(null);
@@ -269,6 +325,7 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
       value={{
         stops,
         filteredStops,
+        selectedStops,
         result,
         step,
         error,
@@ -283,6 +340,11 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
         toggleCity,
         selectAllCities,
         excludeAllCities,
+        toggleStopSelected,
+        selectAllStops,
+        deselectAllStops,
+        batchSetStatus,
+        setStopStatus,
         addStop,
         removeStop,
         setStopRole,

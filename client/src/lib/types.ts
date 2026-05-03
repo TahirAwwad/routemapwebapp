@@ -5,6 +5,8 @@
 
 export type StopRole = "origin" | "destination" | "waypoint";
 
+export type StopStatus = "pending" | "in_progress" | "completed" | "skipped";
+
 export interface Stop {
   id: string;
   name: string;
@@ -14,6 +16,9 @@ export interface Stop {
   lat: number;
   lng: number;
   role: StopRole;
+  status: StopStatus;
+  lastVisit?: Date;
+  selected: boolean;
 }
 
 export interface RouteLeg {

@@ -19,16 +19,27 @@ import {
   ChevronDown,
   Layers,
   FileDown,
+  CheckCircle2,
+  Circle,
+  Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useRoute } from "@/contexts/RouteContext";
 import { getSegmentColor, buildStopSegmentMap, ORIGIN_COLOR, DESTINATION_COLOR } from "@/lib/clustering";
-import type { Stop, RouteSegment } from "@/lib/types";
+import type { Stop, RouteSegment, StopStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { exportRoutePdf } from "@/lib/exportPdf";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+
+const RESULT_STATUS_CONFIG: Record<StopStatus, { Icon: React.ComponentType<{ className?: string }>; badge: string; text: string }> = {
+  pending: { Icon: Circle, badge: "bg-gray-100 dark:bg-gray-800", text: "text-gray-500" },
+  in_progress: { Icon: Clock, badge: "bg-blue-100 dark:bg-blue-900", text: "text-blue-600 dark:text-blue-400" },
+  completed: { Icon: CheckCircle2, badge: "bg-emerald-100 dark:bg-emerald-900", text: "text-emerald-600 dark:text-emerald-400" },
+  skipped: { Icon: Ban, badge: "bg-amber-100 dark:bg-amber-900", text: "text-amber-600 dark:text-amber-400" },
+};
 
 function StopRoleIcon({ role }: { role: Stop["role"] }) {
   if (role === "origin")
@@ -216,18 +227,38 @@ function SegmentPanel({
                               )}
                             </div>
 
-                            {/* Remove button — waypoints only */}
-                            {stop.role === "waypoint" && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => removeFromResult(stop.id)}
-                                title="Remove stop and re-optimise"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            )}
+                            {/* Status indicator + Remove button */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {/* Status tag */}
+                              {(() => {
+                                const s = RESULT_STATUS_CONFIG[stop.status];
+                                return (
+                                  <div
+                                    className={cn(
+                                      "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium",
+                                      s.badge,
+                                      s.text
+                                    )}
+                                    title={`Status: ${stop.status}`}
+                                  >
+                                    <s.Icon className="w-3 h-3" />
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Remove button — waypoints only */}
+                              {stop.role === "waypoint" && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => removeFromResult(stop.id)}
+                                  title="Remove stop and re-optimise"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
