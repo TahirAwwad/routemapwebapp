@@ -23,6 +23,7 @@ import { MapView } from "@/components/Map";
 import { OsmBrowseMap } from "@/components/OsmBrowseMap";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { RouteMap } from "@/components/RouteMap";
+import { SplitScreen } from "@/components/SplitScreen";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -839,32 +840,37 @@ function SalesFieldInner() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-1 min-h-0 flex-row">
-            <div className="w-full max-w-md shrink-0 border-r border-border overflow-y-auto p-4 pb-28 min-h-0">
-              <LeadList
-                leads={filtered}
-                selectedIds={selectedIds}
-                visitedIds={visitedIds}
-                onToggle={toggleSelect}
-                onRemove={removeFromSelection}
-                onMarkVisited={markVisited}
-                onOpenDetail={openDetail}
-              />
-            </div>
-            <div className="flex-1 relative min-h-0 p-4 pb-28">
-              <div className="absolute inset-4 flex flex-col min-h-0">
-                <MapPinsRouteSegment
-                  mapSubMode={mapSubMode}
-                  onMapSubMode={setMapSubMode}
+          <SplitScreen
+            className="flex-1 min-h-0"
+            topPanel={
+              <div className="flex-1 relative min-h-0 p-4 pb-28">
+                <div className="absolute inset-4 flex flex-col min-h-0">
+                  <MapPinsRouteSegment
+                    mapSubMode={mapSubMode}
+                    onMapSubMode={setMapSubMode}
+                    leads={filtered}
+                    fitKey={fitKey}
+                    highlightedId={detailLead?.id ?? null}
+                    driverLocation={driverLocation}
+                    onMarkerClick={openDetail}
+                  />
+                </div>
+              </div>
+            }
+            bottomPanel={
+              <div className="w-full shrink-0 border-t border-border overflow-y-auto p-4 pb-28 min-h-0">
+                <LeadList
                   leads={filtered}
-                  fitKey={fitKey}
-                  highlightedId={detailLead?.id ?? null}
-                  driverLocation={driverLocation}
-                  onMarkerClick={openDetail}
+                  selectedIds={selectedIds}
+                  visitedIds={visitedIds}
+                  onToggle={toggleSelect}
+                  onRemove={removeFromSelection}
+                  onMarkVisited={markVisited}
+                  onOpenDetail={openDetail}
                 />
               </div>
-            </div>
-          </div>
+            }
+          />
         )}
 
         <AnimatePresence>
