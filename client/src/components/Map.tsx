@@ -87,7 +87,7 @@ declare global {
   }
 }
 
-const FALLBACK_GOOGLE_MAPS_API_KEY = 'AIzaSyBJ5gEWzKhFl6SG9TWr1w07kOXZc1lZY';
+const FALLBACK_GOOGLE_MAPS_API_KEY = 'AIzaSyB-Wc8rY3hh-LCpszcMCg1jp44b_f6-qKI';
 
 const FORGE_KEY = MAPS_FORGE_KEY;
 const GOOGLE_KEY = MAPS_GOOGLE_KEY;
