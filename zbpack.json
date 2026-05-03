@@ -1,4 +1,4 @@
 {
-  "build_command": "pnpm run build",
+  "build_command": "npm run build",
   "start_command": "node dist/index.js"
 }
