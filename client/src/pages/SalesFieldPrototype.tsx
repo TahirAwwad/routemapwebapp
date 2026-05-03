@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   ExternalLink,
   Loader2,
-  LogOut,
   Map as MapIcon,
   RefreshCw,
   Route,
@@ -33,7 +32,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Drawer,
   DrawerContent,
@@ -41,7 +39,6 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
-import { useAuth } from "@/contexts/AuthContext";
 import { RouteProvider, useRoute } from "@/contexts/RouteContext";
 import { useDriverLocation } from "@/hooks/useDriverLocation";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -511,7 +508,6 @@ function SalesFieldInner() {
     states: [],
     cities: [],
   });
-  const { logout } = useAuth();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [visitedIds, setVisitedIds] = useState<string[]>([]);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
@@ -640,16 +636,6 @@ function SalesFieldInner() {
           <div className="flex items-center gap-2 shrink-0">
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 text-xs text-sidebar-foreground"
-              onClick={() => logout()}
-            >
-              <LogOut className="w-3.5 h-3.5 mr-1" />
-              Log out
-            </Button>
-            <Button
-              type="button"
               variant="outline"
               size="sm"
               className="h-9 text-xs"
@@ -714,16 +700,6 @@ function SalesFieldInner() {
             <p className="text-xs text-muted-foreground">Leads · route</p>
           </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="shrink-0 h-9 text-xs"
-          onClick={() => logout()}
-        >
-          <LogOut className="w-3.5 h-3.5 mr-1" />
-          Log out
-        </Button>
       </header>
 
       <div className="shrink-0 p-3 space-y-3 border-b border-border bg-muted/30">
@@ -795,54 +771,73 @@ function SalesFieldInner() {
 
       <div className="flex-1 flex flex-col min-h-0 relative">
         {isMobile ? (
-          <Tabs
-            value={browseTab}
-            onValueChange={(v) => setBrowseTab(v as "list" | "map")}
-            className="flex flex-col flex-1 min-h-0 gap-0"
-          >
-            <div className="shrink-0 px-3 pt-3">
-              <TabsList className="w-full h-11 p-1 grid grid-cols-2">
-                <TabsTrigger value="list" className="min-h-10 gap-2">
-                  <List className="w-4 h-4" />
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* ── Native segmented control (top) ── */}
+            <div className="shrink-0 px-3 pt-3 pb-2">
+              <div className="flex rounded-lg border border-border bg-muted/40 p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setBrowseTab("list")}
+                  className={cn(
+                    "flex-1 min-h-9 rounded-md text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-colors",
+                    browseTab === "list"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <List className="w-3.5 h-3.5" />
                   List
-                </TabsTrigger>
-                <TabsTrigger value="map" className="min-h-10 gap-2">
-                  <MapIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBrowseTab("map")}
+                  className={cn(
+                    "flex-1 min-h-9 rounded-md text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-colors",
+                    browseTab === "map"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <MapIcon className="w-3.5 h-3.5" />
                   Map
-                </TabsTrigger>
-              </TabsList>
-            </div>
-            <TabsContent
-              value="list"
-              className="flex-1 overflow-y-auto mt-0 px-3 pb-28 pt-3 min-h-0 data-[state=inactive]:hidden"
-            >
-              <LeadList
-                leads={filtered}
-                selectedIds={selectedIds}
-                visitedIds={visitedIds}
-                onToggle={toggleSelect}
-                onRemove={removeFromSelection}
-                onMarkVisited={markVisited}
-                onOpenDetail={openDetail}
-              />
-            </TabsContent>
-            <TabsContent
-              value="map"
-              className="flex-1 mt-0 px-3 pb-28 pt-3 min-h-0 relative data-[state=inactive]:hidden"
-            >
-              <div className="absolute inset-3 flex flex-col min-h-0">
-                <MapPinsRouteSegment
-                  mapSubMode={mapSubMode}
-                  onMapSubMode={setMapSubMode}
-                  leads={filtered}
-                  fitKey={fitKey}
-                  highlightedId={detailLead?.id ?? null}
-                  driverLocation={driverLocation}
-                  onMarkerClick={openDetail}
-                />
+                </button>
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+
+            {/* ── Pull-to-refresh scroll area ── */}
+            <div className="flex-1 overflow-y-auto min-h-0 px-3 pb-28 pt-2"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                if (el.scrollTop === 0 && !leadsLoading) {
+                  void reloadLeads();
+                }
+              }}
+            >
+              {browseTab === "list" ? (
+                <LeadList
+                  leads={filtered}
+                  selectedIds={selectedIds}
+                  visitedIds={visitedIds}
+                  onToggle={toggleSelect}
+                  onRemove={removeFromSelection}
+                  onMarkVisited={markVisited}
+                  onOpenDetail={openDetail}
+                />
+              ) : (
+                <div className="absolute inset-3 flex flex-col min-h-0">
+                  <MapPinsRouteSegment
+                    mapSubMode={mapSubMode}
+                    onMapSubMode={setMapSubMode}
+                    leads={filtered}
+                    fitKey={fitKey}
+                    highlightedId={detailLead?.id ?? null}
+                    driverLocation={driverLocation}
+                    onMarkerClick={openDetail}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex flex-1 min-h-0 flex-row">
             <div className="w-full max-w-md shrink-0 border-r border-border overflow-y-auto p-4 pb-28 min-h-0">
