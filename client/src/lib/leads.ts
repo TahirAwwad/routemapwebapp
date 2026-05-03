@@ -50,6 +50,35 @@ function hashString(s: string): number {
   return h >>> 0;
 }
 
+/** On-demand geocode a single address via Google Maps Geocoding API.
+ * Uses the app's VITE_GOOGLE_MAPS_API_KEY env var.
+ * Returns { lat, lng } or throws if the address cannot be resolved. */
+export async function geocodeAddress(
+  address: string,
+  city: string,
+  state: string
+): Promise<{ lat: number; lng: number }> {
+  const apiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) ?? "";
+  if (!apiKey) throw new Error("VITE_GOOGLE_MAPS_API_KEY is not set");
+
+  const query = [address, city, state].filter(Boolean).join(", ");
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${encodeURIComponent(apiKey)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Geocoding request failed: ${res.status}`);
+  const data = (await res.json()) as {
+    status: string;
+    results?: Array<{ geometry: { location: { lat: number; lng: number } } }>;
+  };
+
+  if (data.status !== "OK" || !data.results?.[0]) {
+    throw new Error(`Geocoding failed for "${query}": ${data.status}`);
+  }
+
+  const { lat, lng } = data.results[0].geometry.location;
+  return { lat, lng };
+}
+
 /** Deterministic mock sales / rating / order fields from a stable id (e.g. client number). */
 export function mockMetricsForLeadId(id: string) {
   const h = hashString(id);
@@ -291,5 +320,26 @@ export async function loadLeads(): Promise<Lead[]> {
   const res = await fetch(csvPath);
   if (!res.ok) throw new Error(`Failed to load route_addresses.csv (${res.status})`);
   const text = await res.text();
-  return parseRouteAddressesCsv(text);
+  const leads = parseRouteAddressesCsv(text);
+
+  // On-demand geocode any rows that have an address but no static coordinates
+  const missing = leads.filter((l) => !Number.isFinite(l.lat) && l.address.trim());
+  if (missing.length > 0) {
+    const apiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) ?? "";
+    if (apiKey) {
+      const results = await Promise.allSettled(
+        missing.map((l) => geocodeAddress(l.address, l.city, l.state))
+      );
+      let idx = 0;
+      for (const lead of missing) {
+        const result = results[idx++];
+        if (result.status === "fulfilled") {
+          lead.lat = result.value.lat;
+          lead.lng = result.value.lng;
+        }
+      }
+    }
+  }
+
+  return leads;
 }
