@@ -40,6 +40,7 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
+import { BottomActionBar } from "@/components/BottomActionBar";
 import { RouteProvider, useRoute } from "@/contexts/RouteContext";
 import { useDriverLocation } from "@/hooks/useDriverLocation";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -887,32 +888,13 @@ function SalesFieldInner() {
           )}
         </AnimatePresence>
 
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur-md px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="max-w-lg mx-auto flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground shrink-0">
-              <span className="font-mono font-semibold text-foreground">{activeSelectedIds.length}</span>{" "}
-              selected
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 px-4"
-                disabled={filtered.length === 0}
-                onClick={selectAllFiltered}
-              >
-                Add all leads
-              </Button>
-              <Button
-                className="min-h-11 px-6 font-semibold"
-                disabled={!canOptimise}
-                onClick={handleOptimise}
-              >
-                Optimise route
-              </Button>
-            </div>
-          </div>
-        </div>
+        <BottomActionBar
+          selectedCount={activeSelectedIds.length}
+          canOptimise={canOptimise}
+          filteredCount={filtered.length}
+          onAddAll={selectAllFiltered}
+          onOptimise={handleOptimise}
+        />
       </div>
 
       <div className="shrink-0 px-4 py-2 text-center border-t border-border bg-muted/20">
