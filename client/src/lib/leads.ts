@@ -302,6 +302,8 @@ export function leadToStopPayload(lead: Lead): Omit<Stop, "id" | "role"> {
     state: lead.state,
     lat: lead.lat,
     lng: lead.lng,
+    status: "pending",
+    selected: false,
   };
 }
 

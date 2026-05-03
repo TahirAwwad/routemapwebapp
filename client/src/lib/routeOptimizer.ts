@@ -308,6 +308,8 @@ export function parseCSV(csvText: string): Omit<Stop, "id" | "role">[] {
       state,
       lat,
       lng,
+      status: "pending",
+      selected: false,
     });
   }
 
