@@ -97,7 +97,7 @@ const FORGE_BASE_URL =
   "https://forge.butterfly-effect.dev";
 const MAPS_PROXY_URL = `${FORGE_BASE_URL}/v1/maps/proxy`;
 
-const MAP_LIBRARIES = "marker,places,geocoding,geometry";
+const MAP_LIBRARIES = "marker,places,geocoding,geometry,routes";
 
 // Singleton promise so the script is only ever injected once per page load
 let _mapsLoadPromise: Promise<void> | null = null;
