@@ -93,8 +93,6 @@ export function AddressSearch() {
       address: result.address,
       lat: result.lat,
       lng: result.lng,
-      status: "pending",
-      selected: false,
     });
     setQuery("");
     setResults([]);
