@@ -83,7 +83,7 @@ export function SplitScreen({
 
       {/* Bottom panel */}
       <div
-        className="flex-1 overflow-hidden min-h-0"
+        className="overflow-y-auto"
         style={{ height: `${100 - splitPct}%` }}
       >
         {bottomPanel}
